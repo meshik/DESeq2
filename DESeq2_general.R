@@ -1,3 +1,7 @@
+#TODO:
+# Ask for a file path, each sample name, and the real names of the sample. Construct them into a chr vector and check if the files exist.
+# Ask which comparisons to check by real name of sample.
+
 #####DESeq2 analysis##### (requires at least 2 biological replicates per condition)
 # legend: # <- a note on what is going on
           ## <- describe the next few lines of code
@@ -23,67 +27,134 @@ library(bcbioRNASeq)  # for plotCorrelationHeatmap()
 
 
 ## Specify the full paths to all of your ".genes.results" files (from RSEM), and save those paths in 'files'
-dir <- '/Users/You/Desktop/Analysis/rsem results/'  # the folder with your RSEM output
-samples <- c("sample1", "sample2", "sample3")  # the names of your samples
-files <- file.path(dir2, samples2, ".genes.results", fsep = '')
-names(files) <- c("24h_condition", "24h_condition", "4h_condition", "4h_condition", "Control")  # name all your conditions in the same order as two lines above
-all(file.exists(files))  # Use this line to see if your path is OK: prints TRUE if all files do exist; FALSE otherwise
-
-txi.rsem <- tximport(files, type = "rsem", txIn = FALSE, txOut = FALSE)  # produces an initial count table
-head(txi.rsem$counts)  # head() prints the first few rows of the table
-
-
-## Prepare the DESeq2 object
-sampleTable <- data.frame(condition = factor(c("24h_condition", "24h_condition", "4h_condition", "4h_condition", "Control")))
-txi.rsem$length[txi.rsem$length == 0] <- 1  # convert all counts with 0 to be 1
-dds <- DESeqDataSetFromTximport(txi.rsem, sampleTable, ~condition)
-
-keep <- rowSums(counts(dds)) >= 10  # pre-filtering: anything with less than 10 counts is thrown away
-dds <- dds[keep,]
-
-dds$condition <- factor(dds$condition, levels = c("24h_condition", "4h_condition", "Control"))  # enter each condition category once here
-dds <- DESeq(dds)  # produces the DESeqDataSet object
+specifyFilePath <- function() {
+  print("Starting specifyFilePath()")
+  input <- readline("Enter the full folder path of your RSEM output: ")
+  fileNames <- unlist(strsplit(readline("Enter the names of your files, seperated by commas (For example - sample1,sample2,sample3): "), ","))
+  files <- file.path(input, fileNames, ".genes.results", fsep = '')
+  
+  print(files)
+  print(all(file.exists(files)))  # Use this line to see if your path is OK: prints TRUE if all files do exist; FALSE otherwise
+  
+  conditionNames <- unlist(strsplit(readline("Enter the condition names, seperated by commas, in the same order as your previous input
+                                            (For example - 24h_condition,24h_condition,Control,Control): "), ","))
+  names(files) <- conditionNames
+  
+  print("Finishing specifyFilePath()")
+  return(list(files, conditionNames))  # use this for "sampleTable"
+  # check outside that the files exist (all(file.exists(files)) this returns TRUE/FALSE)
+}
 
 
-## biomaRt - convert gene IDs from ENSEMBL to symbol or Entrez. Code is written for mouse
-ensembl <- useMart("ENSEMBL_MART_ENSEMBL")  # "ENSEMBL_MART_ENSEMBL" chosen from listMarts()
-ensembl = useDataset("mmusculus_gene_ensembl",mart=ensembl)  # "mmusculus_gene_ensembl" chosen from listDatasets(ensembl)
+importWithTximport <- function(files, conditionNames) {
+  print("Starting importWithTximport()")
+  print(files)
+  txi.rsem <- tximport(files, type = "rsem", txIn = FALSE, txOut = FALSE)  # produces an initial count table
+  head(txi.rsem$counts)  # head() prints the first few rows of the table
+  
+  ## Prepare the DESeq2 object
+  print(conditionNames)
+  sampleTable <- data.frame(condition = factor(conditionNames))
+  txi.rsem$length[txi.rsem$length == 0] <- 1  # convert all counts with 0 to be 1
+  dds <- DESeqDataSetFromTximport(txi.rsem, sampleTable, ~condition)
+  
+  keep <- rowSums(counts(dds)) >= 10  # pre-filtering: anything with less than 10 counts is thrown away
+  dds <- dds[keep,]
+  
+  dds$condition <- factor(dds$condition, levels = unique(conditionNames))  # enter each condition category once here
+  dds <- DESeq(dds)  # produces the DESeqDataSet object
+  
+  print("Finishing importWithTximport()")
+  return(dds)
+}
 
-filterType <- "ensembl_gene_id"
-filterValues <- rownames(dds2)  # the gene IDs we want to change
-filterValues2 = sapply(strsplit(filterValues, '.', fixed=T), function(x) x[1])  # this removes the version extension of the ensembl gene ID
 
-attributes = listAttributes(ensembl) 
-attributeNames <- c('ensembl_gene_id', 'entrezgene_id', 'mgi_symbol')
-
-annot <- getBM(attributes = attributeNames, filters = filterType, 
-               values = filterValues2, mart = ensembl, uniqueRows = TRUE)
-
-isDup <- duplicated(annot$ensembl_gene_id)  # boolean (True/False) vector of duplicates
-dup <- annot$ensembl_gene_id[isDup]  # ENSEMBL gene IDs of the duplicated IDs
-annot <- annot[!isDup,]  # this removes all of the duplicate mappings caused by converting gene IDs
-
-annot$entrezgene_id[is.na(annot$entrezgene_id)] <- "999999999"  # changes all of the NA to 999999999
-annot$mgi_symbol[is.na(annot$mgi_symbol)] <- "notRealGene"  # change all of the NA to "notRealGene"
-# if you see in your data "notRealGene" or 999999999, then these are genes you SHOULD NOT include in any analysis
-
-rownames(dds) <- annot$mgi_symbol  # change the gene IDs in our DESeqDataSet to symbol. You can type in "eentrezgene_id" instead of "mgi_symbol"
+convertGeneIDsWithBiomart <- function(dds) {
+  print("Starting convertGeneIDsWithBiomart()")
+  ## biomaRt - convert gene IDs from ENSEMBL to symbol or Entrez. Code is written for mouse
+  ensembl <- useMart("ENSEMBL_MART_ENSEMBL")  # "ENSEMBL_MART_ENSEMBL" chosen from listMarts()
+  ensembl = useDataset("mmusculus_gene_ensembl",mart=ensembl)  # "mmusculus_gene_ensembl" chosen from listDatasets(ensembl)
+  
+  filterType <- "ensembl_gene_id"
+  filterValues <- rownames(dds)  # the gene IDs we want to change
+  filterValues2 = sapply(strsplit(filterValues, '.', fixed=T), function(x) x[1])  # this removes the version extension of the ensembl gene ID
+  
+  attributes = listAttributes(ensembl) 
+  attributeNames <- c('ensembl_gene_id', 'entrezgene_id', 'mgi_symbol')
+  
+  annot <- getBM(attributes = attributeNames, filters = filterType, 
+                   values = filterValues2, mart = ensembl, uniqueRows = TRUE)
+  
+  isDup <- duplicated(annot$ensembl_gene_id)  # boolean (True/False) vector of duplicates
+  dup <- annot$ensembl_gene_id[isDup]  # ENSEMBL gene IDs of the duplicated IDs
+  annot <- annot[!isDup,]  # this removes all of the duplicate mappings caused by converting gene IDs
+  
+  annot$entrezgene_id[is.na(annot$entrezgene_id)] <- "999999999"  # changes all of the NA to 999999999
+  annot$mgi_symbol[is.na(annot$mgi_symbol)] <- "notRealGene"  # change all of the NA to "notRealGene"
+  # if you see in your data "notRealGene" or 999999999, then these are genes you SHOULD NOT include in any analysis
+  
+  rownames(dds) <- annot$mgi_symbol  # change the gene IDs in our DESeqDataSet to symbol. You can type in "eentrezgene_id" instead of "mgi_symbol"
+  
+  print("Finishing convertGeneIDsWithBiomart()")
+  return(dds)  # this dds now contains MGI/Entrez gene IDs
+}
 
 
 ## Create the condition contrasts. You should create a "res" (DESeqResults) object for each comparison you want to observe
-res24v0 <- results(dds, contrast=c("condition", "24h_condition", "Control"))
-res24v4 <- results(dds, contrast=c("condition", "24h_condition", "4h_condition"))
-res4v0 <- results(dds, contrast=c("condition", "4h_condition", "Control"))
+createContrasts <- function(dds) {
+  print("Starting createContrasts()")
+  allRes <- list()
+  resCounter <- 1
+  while (TRUE){
+    input <- readline("Enter 2 conditions to compare. For example: 24h_condition,Control. Enter nothing to stop entering comparisons. ")
+    if (input == ''){
+      break
+    }
+    comparisonVector <- unlist(strsplit(input, ","))
+    allRes[resCounter] <- results(dds, contrast = c("condition", comparisonVector[1], comparisonVector[2]))
+    resCounter <- resCounter + 1
+  }
+  
+  print("Finishing createContrasts()")
+  return(allRes)
+  # res24v0 <- results(dds, contrast=c("condition", "24h_condition", "Control"))
+  # res24v4 <- results(dds, contrast=c("condition", "24h_condition", "4h_condition"))
+  # res4v0 <- results(dds, contrast=c("condition", "4h_condition", "Control"))
+}
+
+
+runDESeq2Analysis <- function() {
+  outputList <- specifyFilePath()  # prompts the user several times for the correct folder, file names & condition names
+  # outputList contains files ([1]) & conditionNames ([2])
+  print(outputList[1])
+  dds <- importWithTximport(outputList[1][[1]], outputList[2][[1]])
+  dds <- convertGeneIDsWithBiomart(dds)  # changes the gene IDs from ENSEMBL to MGI/Entrez
+  allRes <- createContrasts(dds)  # prompts the user to specify which contrasts to do
+  allRes
+}
+runDESeq2Analysis()
+# for testing:
+# /Users/dekel/Desktop/020820/rsem results/
+# dekel1_S22,dekel4_S24,dekel7_S26,dekel8_S27,dekel11_S28,dekel3_S23,dekel6_S25,dekel12_S29
+# 24h_Irisin,24h_Irisin,24h_Irisin,4h_Irisin,4h_Irisin,Control,Control,Control
+
+
+
+
+
+
+
+
 
 # corrects res for log-fold-change
 ### resLFC2 <- lfcShrink(dds2, coef="condition_Control_vs_24h_Irisin", type="apeglm")
 
 # how many adjusted p-values are under 0.05(or anything else)?:
-sum(res24v0$padj < 1e-10, res24v4$padj < 1e-10, res4v0$padj < 1e-10, na.rm=TRUE)
+# sum(res24v0$padj < 1e-10, res24v4$padj < 1e-10, res4v0$padj < 1e-10, na.rm=TRUE)
 
 # also does some normalization
 resIHW2 <- results(dds2, filterFun=ihw)
-summary(resIHW2)
+# summary(resIHW2)
 
 ## PLOT: MA
 par(mfrow=c(3,1)) # creates a m*n plot array for the following plots
