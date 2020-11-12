@@ -73,7 +73,7 @@ convertGeneIDsWithBiomart <- function(dds) {
   print("Starting convertGeneIDsWithBiomart()")
   ## biomaRt - convert gene IDs from ENSEMBL to symbol or Entrez. Code is written for mouse
   ensembl <- useMart("ENSEMBL_MART_ENSEMBL")  # "ENSEMBL_MART_ENSEMBL" chosen from listMarts()
-  ensembl = useDataset("mmusculus_gene_ensembl",mart=ensembl)  # "mmusculus_gene_ensembl" chosen from listDatasets(ensembl)
+  ensembl = useDataset("mmusculus_gene_ensembl", mart=ensembl)  # "mmusculus_gene_ensembl" chosen from listDatasets(ensembl)
   
   filterType <- "ensembl_gene_id"
   filterValues <- rownames(dds)  # the gene IDs we want to change
@@ -93,7 +93,7 @@ convertGeneIDsWithBiomart <- function(dds) {
   annot$mgi_symbol[is.na(annot$mgi_symbol)] <- "notRealGene"  # change all of the NA to "notRealGene"
   # if you see in your data "notRealGene" or 999999999, then these are genes you SHOULD NOT include in any analysis
   
-  rownames(dds) <- annot$mgi_symbol  # change the gene IDs in our DESeqDataSet to symbol. You can type in "eentrezgene_id" instead of "mgi_symbol"
+  rownames(dds) <- annot$mgi_symbol  # change the gene IDs in our DESeqDataSet to symbol. You can type in "entrezgene_id" instead of "mgi_symbol"
   
   print("Finishing convertGeneIDsWithBiomart()")
   return(dds)  # this dds now contains MGI/Entrez gene IDs
@@ -133,11 +133,12 @@ runDESeq2Analysis <- function() {
   allRes
 }
 runDESeq2Analysis()
-# for testing:
-# /Users/dekel/Desktop/020820/rsem results/
-# dekel1_S22,dekel4_S24,dekel7_S26,dekel8_S27,dekel11_S28,dekel3_S23,dekel6_S25,dekel12_S29
-# 24h_Irisin,24h_Irisin,24h_Irisin,4h_Irisin,4h_Irisin,Control,Control,Control
-
+/Users/dekel/Desktop/020820/rsem results/
+dekel1_S22,dekel4_S24,dekel7_S26,dekel8_S27,dekel11_S28,dekel3_S23,dekel6_S25,dekel12_S29
+24h_Irisin,24h_Irisin,24h_Irisin,4h_Irisin,4h_Irisin,Control,Control,Control
+24h_Irisin,Control
+24h_Irisin,4h_Irisin
+4h_Irisin,Control
 
 
 
